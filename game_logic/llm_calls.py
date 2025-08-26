@@ -2,6 +2,7 @@
 # Contains the GeminiAPI class and all prompt engineering logic.
 
 import json
+import time
 import google.generativeai as genai
 
 class GeminiAPI:
@@ -37,12 +38,21 @@ class GeminiAPI:
             return "{}"
 
         print("--- Sending Prompt to Gemini... (This may take a moment) ---")
-        try:
-            response = self.model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            return self._clean_json_response(response.text)
-        except Exception as e:
-            print(f"❌ An error occurred during the API call: {e}")
-            return "{}"
+        max_attempts = 3
+        delay = 1.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+                text = response.text if hasattr(response, "text") else str(response)
+                return self._clean_json_response(text)
+            except Exception as e:
+                print(f"❌ Gemini API error (attempt {attempt}/{max_attempts}): {e}")
+                if attempt < max_attempts:
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    print("--- Gemini API failed after retries, returning empty JSON string. ---")
+                    return "{}"
 
     def _create_story_generator_prompt(self, context):
         return f"""

@@ -51,16 +51,51 @@ class GameEngine:
                 "story_theme": game_state.story_theme
             }
             quest_network_json = self.llm_api.generate_content("WorldBuilder", world_context)
-            game_state.quest_network = json.loads(quest_network_json)
+            # Log raw response for debugging if empty or not parseable
+            try:
+                game_state.quest_network = json.loads(quest_network_json)
+            except Exception as parse_exc:
+                print(f"--- ERROR parsing quest network JSON: {parse_exc} ---")
+                print("Raw quest_network_json:", quest_network_json)
+                game_state.quest_network = {}
+
             if not game_state.quest_network.get("nodes"):
-                 raise ValueError("Generated quest network is missing the 'nodes' list.")
+                # Attempt one quick retry before failing
+                print("--- CRITICAL: Generated quest network missing 'nodes'. Retrying once... ---")
+                retry_json = self.llm_api.generate_content("WorldBuilder", world_context)
+                try:
+                    game_state.quest_network = json.loads(retry_json)
+                except Exception as retry_parse_exc:
+                    print(f"Retry parse failed: {retry_parse_exc}")
+                    print("Raw retry_json:", retry_json)
+                    game_state.quest_network = {}
+
+            # Final check: if still missing nodes, use a conservative fallback to prevent crash
+            if not game_state.quest_network.get("nodes"):
+                print("--- FALLBACK: Using minimal quest network to continue startup. ---")
+                fallback_villager_name = game_state.villagers[0]["name"] if game_state.villagers else "Arthur"
+                game_state.quest_network = {
+                    "nodes": [
+                        {
+                            "node_id": "node1",
+                            "villager_name": fallback_villager_name,
+                            "content": "A fallback clue (engine-generated) — the real generator failed.",
+                            "type": "Information",
+                            "priority": 5,
+                            "key_clue": True,
+                            "preconditions": [],
+                            "required_familiarity": None
+                        }
+                    ]
+                }
+
             print("Quest network generated successfully.")
             
             print("\n\n" + "="*20 + " GENERATED QUEST NETWORK (SPOILERS) " + "="*20)
             print(json.dumps(game_state.quest_network, indent=2))
             print("="*70 + "\n\n")
 
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
+        except (json.JSONDecodeError, ValueError, KeyError, Exception) as e:
             print(f"--- CRITICAL ERROR: Failed to generate or parse quest network. Error: {e} ---")
             traceback.print_exc()
             raise Exception("Could not initialize game world.") from e
