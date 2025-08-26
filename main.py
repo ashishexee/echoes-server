@@ -47,6 +47,11 @@ async def startup_event():
         sys.exit("Failed to initialize Gemini Model. Please check your API key and network connection.")
     print("Game Engine initialized successfully.")
 
+@app.get("/ping/")
+async def ping():
+    """A simple ping endpoint to confirm the server is running."""
+    return {"status": "ok", "message": "Village of Echoes API is running"}
+
 @app.post("/game/new", response_model=NewGameResponse)
 async def create_new_game(request: NewGameRequest):
     game_id = str(uuid.uuid4())
